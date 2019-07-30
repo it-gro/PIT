@@ -1,0 +1,12 @@
+create table pit_trace_level(
+  ptl_id number,
+  ptl_name &ORA_NAME_TYPE.,
+  ptl_display_name varchar2(50 char),
+  constraint pit_trace_level_pk primary key(ptl_name)
+) organization index;
+
+comment on column pit_trace_level.ptl_id is 'Technical Key';
+comment on column pit_trace_level.ptl_name is 'Unique name for message severity';
+comment on column pit_trace_level.ptl_name is 'Display name for message severity';
+
+comment on table pit_trace_level is 'Lookup-table for message severities.';

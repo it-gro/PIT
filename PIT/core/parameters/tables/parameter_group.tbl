@@ -1,0 +1,12 @@
+create table parameter_group(
+   pgr_id &ORA_NAME_TYPE.,
+   pgr_description varchar2(255),
+   pgr_is_modifiable &FLAG_TYPE. default &C_TRUE.,
+   constraint parameter_group_pk primary key (pgr_id),
+   constraint pgr_is_modifiable_chk check (pgr_is_modifiable in (&C_TRUE., &C_FALSE.))
+) organization index;
+
+comment on table parameter_group is 'Lookup for parameter groups';
+comment on column parameter_group.pgr_id is 'Primary key, alphanumeric';
+comment on column parameter_group.pgr_description is 'Longtext for the parameter group';
+comment on column parameter_group.pgr_is_modifiable is 'Flag to indicate that parameters within this group my be eligible for end user changes (May be restricted for single parameters within this group)';

@@ -13,12 +13,12 @@ declare
            where object_name in (
                  'MESSAGE_TYPE', 'MSG_PARAM', 'MSG_PARAMS', 'MSG_ARGS', 'MSG_ARGS_CHAR', 'PIT_MODULE', 
                  'DEFAULT_ADAPTER', 'CALL_STACK_TYPE', 'PIT_MODULE_LIST', 'PIT_CONTEXT', '', 
-                 'PIT_MODULE_META', 'PIT_MODULE_LIST', -- Typen
-                 'MSG', 'PIT', 'PIT_PKG', 'PIT_ADMIN', -- Packages
-                 'PIT_MESSAGE_LANGUAGE_V', 'PIT_MESSAGE_V', -- Views
-                 'PIT_MESSAGE', 'PIT_MESSAGE_LANGUAGE', 'PIT_MESSAGE_SEVERITY', 'PIT_TRACE_LEVEL', 'PIT_MESSAGE_GROUP',  -- Tabellen
+                 'PIT_MODULE_META', 'PIT_MODULE_LIST', 'CHAR_TABLE', -- Typen
+                 'MSG', 'PIT', 'PIT_PKG', 'PIT_ADMIN', 'PIT_UTIL', -- Packages
+                 'PIT_MESSAGE_LANGUAGE_V', 'PIT_MESSAGE_V', 'PIT_TRANSLATABLE_ITEM_V', -- Views
+                 'PIT_MESSAGE', 'PIT_MESSAGE_LANGUAGE', 'PIT_MESSAGE_SEVERITY', 'PIT_TRACE_LEVEL', 'PIT_MESSAGE_GROUP', 'PIT_TRANSLATABLE_ITEM',  -- Tabellen
                  'MSG',  -- Synonyme
-                 'PIT_LOG_SEQ' -- Sequenzen
+                 'PIT_LOG_SEQ', 'PIT_TRANSLATABLE_ITEM_SEQ' -- Sequenzen
                  )
              and object_type not like '%BODY'
              and owner = upper('&INSTALL_USER.')

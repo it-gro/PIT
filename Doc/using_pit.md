@@ -4,13 +4,26 @@ After having installed PIT, it's ready to be used within your code.
 ## Trace method calls
 To start with, you may want to add a call to `pit.enter(p_action, p_module)` at the beginning and to `pit.leave` at the end of a method you want to trace. Doing so enables PIT to collect data about your call hierarchy, the time spent and optionally the parameters passed into the method. If you want to completely instrument your code, you may want to add the respective calls to a method template of your favourite IDE.
 
-As a best practice, provide `pit.enter` with the name of your method and your package. This way, PIT is able to achieve the highest performance because if you don't pass this information in, PIT will try to gather this information from environment or call stack information, based on the database version you're using. This in any case is slower than providing the information yourself. One recommendation to pass the package name in is to create a global package constant `C_PKG constant varchar2(30 byte) := $$PLSQL_UNIT;`. After having defined this constant once, you can easily pass it in without having to rewrite the package name over and over again.
+As a best practice, provide `pit.enter` with the name of your method and your package. This way, PIT is able to achieve the highest performance because if you don't pass this information in, PIT will try to gather this information from environment or call stack information, based on the database version you're using. This in any case is slower than providing the information yourself. One recommendation to pass the package name in is to create a global package constant `C_PKG constant varchar2(30/128 byte) := $$PLSQL_UNIT;`. After having defined this constant once, you can easily pass it in without having to rewrite the package name over and over again.
 
-Please make sure, that before leaving a method a call to `pit.leave` is included. This is especially important for exception handlers (if you don't use `pit.sql_exception`, as described later), before `exit` and `return` clauses and after `case`- or `if` switches.
+Please make sure, that before leaving a method a call to `pit.leave` is included. This is especially important for exception handlers (if you don't use `pit.sql_exception`, as described later), before `exit` and `return` clauses and after `case`- or `if` switches. As there is no easy and secure way to maintain the call stack of methods in PL/SQL (other than frequently calling `UTL_CALL_STACK` starting with Oracle 12c, that is), PIT maintains the call hierarchy manually by storing `enter` and `leave` calls on an internal stack. If you don't provide a proper call to `leave`, the hierarchy of the calls gets out of sync. Calling `pit.initialize` or `pit.stop` will empty the call stack to adjust those snychronitaion issues.
+
+Starting with version 12c, PIT has extended its possibility of handling the call stack by utilizing `UTL_CALL_STACK`under the covers. This makes call stack maintenance more stable and reliable and allows for even less code in the application. Imagine a method `A` that calls method `B` which in turn calls method `C`. In `C`, an error is raised, but it is catched at method `A`. Normally, there would be no way to clear the call stack if not any of the methods `A`, `B` and `C` would offer an exception handler. Methods `C` and `B` would then implement a dummy handler such as 
+
+```
+...
+exception
+  when others then
+    pit.leave;
+    raise;
+end;
+```
+
+which is rather ugly. Starting with 12c, this is not necessary anymore. Simply throw the error and catch it where you require it and PIT will clean the call stack up to the actual method that caught the exception.
 
 ### Passing parameters to trace-methods
 
-If you want to include parameters passed to a method in your tracing, this can be achieved by passing them in as an instance of `MSG_PARAMS`. This type is a nested table of `MSG_PARAM` objects, which in turn are simple key value objects. A key name may be as long as 30 byte and the param value up to 4000 byte of varchar2. You create an instance of `MSG_PARAM`by calling its constructor function:
+If you want to include parameters passed to a method in your tracing, this can be achieved by providing the methods with an instance of `MSG_PARAMS`. This type is a nested table of `MSG_PARAM` objects, which in turn is a simple key value object. A key name may be as long as `30 byte` (`128 byte` starting with Oracle 12c) and the param value up to `4000 byte` of `varchar2`. You create an instance of `MSG_PARAM`by calling its constructor function:
 
 ```
 msg_param('key', 'value');
@@ -35,6 +48,8 @@ begin
 end my_func;
 ```
 
+Instances of `MSG_PARAMS` may be passed ot `pit.leave` as well. This comes in handy if a method calculates values and you want to log the results. As it is also important to log the outcome of parameters in case of an exception, you may pass instances of `MSG_PARAMS` to the error handlers `pit.sql_exception` and `pit.stop` as well.
+
 ### Adjusting trace level
 Method `pit.enter` provides different levels of tracing. These levels are:
 - `pit.trace_off` (10),
@@ -43,9 +58,9 @@ Method `pit.enter` provides different levels of tracing. These levels are:
 - `pit.trace_detailed` (40)
 - `pit.trace_all` (50)
 
-To make their use convenient, PIT offers dedicated `enter`- and `leave` methods for the respective trace levels, such as `pit.enter_optional` and `pit.leave_optional`. Please make sure that you select a matching `leave` method for the `enter` method you chose. This makes sure that the call stack does not get out of sync, which may happen if a method is pushed on the call stack but never popped.
+To make their use convenient, PIT offers dedicated `enter`- and `leave` methods for the respective trace levels, such as `pit.enter_optional` and `pit.leave_optional`. Please make sure that you select a matching `leave` method for the `enter` method you chose. This makes sure that the call stack does not get out of sync, which may happen if a method is pushed on the call stack but never popped because of the actual trace settings.
 
-If you choose `pit.enter_mandatory`, parameters `p_action` and `p_module` are mandatory as well. Reason is that this method also sets `dbms_application_info` which in turn shows in some performance views. Therefore, `pit.enter_mandatory` also offers an optional parameter called `p_client_info` to pass in additional information that also shows up in performance views. Settings for `dbms_application_info` will be set in any case, no matter whether you actually trace your code or not.
+If you choose `pit.enter_mandatory`, this method also sets `dbms_application_info` which in turn is shown in some performance views. Therefore, `pit.enter_mandatory` also offers an optional parameter called `p_client_info` to pass in additional information that also shows up in performance views. Settings for `dbms_application_info` will be set in any case, no matter whether you actually trace your code or not.
 
 Choosing an appropriate enter method is a good practice to allow you to set your trace level easily with a context. As a best practice, you may mark your public methods `pit.enter_mandatory` (with the exception of helper packages probably) and the more important private methods within a package `pit.enter_optional`. You then have another two levels at hand to adjust when a method gets traced.
 
@@ -178,6 +193,16 @@ Method `pit.sql_exception` is used to achieve two goals:
 
 If you defined a message for your own exception, simply raise the error by calling `pit.error(msg.CHILD_RECORD_FOUND_ERR);`. In your exception handler, you catch this exception as you would do with any other exception in PIT. Further details on throwing and catching exceptions can be found [here](https://github.com/j-sieben/PIT/blob/master/Doc/exceptions.md).
 
+## Logging independently of log settings
+
+If you require PIT to log any information regardless of any log settings, this is possible by calling method `pit.log`. To enhance its usability, this method accepts some additional parameters.
+
+First, the message severity is taken from the message you pass in. So if you want to log a message with severity `pit.LEVEL_ERROR`, this then defines the severity of the logging. You can limit this by using a parameter call `P_LOG_THRESHOLD`. If set, only messages are logged with a severity lower or equal this value.
+
+You then can decide upon the output modules to use for this log process. Without changing any log settings, you may want to log a specific message to one output module only. This is possible by passing in the list of requested output modules as a colon-separated list into parameter `P_MODULE_LIST`. As said, this does not effect any log settings but will be set for this single log process.
+
+Imagine an application like a flow control system that needs to log changed status messages to a dedicated output module called PIT_FLOW_CONTROL. By calling `pit.log` with parameter `p_module_list => 'PIT_FLOW_CONTROL` only this output module will receive the status change message. 
+
 ## Handling message parameters
 
 Messages require parameters. To pass parameters to a message, an object of type `MSG_ARGS` is provided. This is a `varray(20) of clob`. I chose a clob varray because the parameters have to keep their defined order to make sure that the right parameter is replaced at the right position within the message. To prepare a message for replacements of parameters, you add anchors of the form `#n#` to the message, with `n` being an integer between 1 and 20. Here's an example of a message with replacement anchors and the code to call it:
@@ -197,17 +222,6 @@ If your output module implements a `print`-method, you can use this method to pa
 
 Main use obviously is to pass validation messages, status messages and the like to the view layer. To achieve this, you normally create a message of severity `pit.level_verbose`. This way, only a constant for the message is created in the MSG package. To use it, you simply call `pit.print(msg.MY_MESSAGE)` and you're done.
 
-## Using PIT creatively
-As PIT is not centered around debugging and logging, but around messages, you may use PIT whenever you have to deal with messages. In this context, it may be necessary to habe a logging mechanism that can't be easily switched off by setting a parameter or a context. In a project I created a Finite State Machine (FSM) in PL/SQL to control complex workflows. I needed a way to log any status change and any occurence of events, regardless of the actual logging settings. This is, where `pit.log_specific` comes in handy.
-
-`pit.log_specific` at first glance looks like any other logging method. It allows you to pass in a message constant, optionally enriched by message parameters as well as a affected ID, allowing you to reference a specific instance within your messages. Actually, the use within the FSM context brought me to extend the interface with this option. Reason is, that in my project many instances of the FSM object undergo a process cycle which is defined by the various transitions within the FSM. Therefore, when logging the status changes, I needed an easy way to group related status changes together. This is where the `p_affected_id` is important. An output module may store it in a separate column of a logging table, allowing for easy grouping of messages.
-
-What makes `pit.log_specific` exceptionally useful is its possibility to define an optional list of output modules. If present, the list of modules is defined active, but only for the length of the call to `pit.log_specific`. This allows to log these specific messages to a certain set of output modules only. For FSM, I created a dedicated output module that normally is not part of the overall logging but that gets used whithin the FSM. Being able to set any list of modules you need is a great thing for testing purposes: Just include a `pit_test`output module in the list of modules for `pit.log_specific` and all of your status changes get notified to the test module as well.
-
-An optional parameter called `p_log_threshold` may be used to control a certain level of logging even within `pit.log_specific`. This allows you to reduce the amount of status messages on production systems if you like.
-
-Another interesting use case of `p_affected_id` came up when creating [`utl_apex`](https://github.com/j-sieben/UTL_APEX), available here on GitHub as well. In the environment of validating user input, I decided to utilize this parameter to hold the ID of the input field the user edited content at. In the `pit_apex` output module I decided to look up the label of the passed in element id and try an replace an anchor called `#ITEM_LABEL#` with this label. This way, I could generically log element related exceptions with the element and at the same time include the element label in the error message. So my advice here is: Be creative!
-
 ## Using PIT to assert conditions
 
 If you code using the *Contractor Pattern*, you want to assert that incoming parameters meet certain conditions. Should an assertion fail, an exception is thrown and an error message needs to be generated. To help you on this, PIT provides a basic set of assertion methods. Here are the methods PIT provides so far:
@@ -222,13 +236,15 @@ Most methods are provided with overloads for `varchar2`, `number` and `date`, th
 
 I added the paramter `p_affected_id` to the assertion methods as I did before in the log methods. Reason is that many validations require a reference to an input field or similar. E.g. in APEX you have the possibility to attach an error message to a specific input field. I found it cumbersome to validate input, create a message for it and then have to deal with proper placement of that message on the screen. By adding `p_affected_id` it's now possible to simply pass in the id of the element you're working at and you're done, the rest is done within output module `pit_apex`.
 
+Plus, you have the ability to pass in any custom error codes you like. If the assertion fails, those custom error codes are integrated into the message instance for later reference.
+
 What makes all assertion methods convenient is that they come with a default message (which of course can be translated as any other message PIT uses). Should you require to do so, you may pass in your own message that gets thrown if the assertion fails. Simply pass in the message name and the message parameters optionally. Here's an example on how to check an assertion with a user defined message:
 
 ```
 begin
   pit.assert(
     p_condition => p_param in (10,20,30),
-    p_messag_name => msg.PARAM_OUT_OF_RANGE, 
+    p_message_name => msg.PARAM_OUT_OF_RANGE, 
     p_arg_list => msg_args('P_PARAM', '10,20,30', to_char(p_param))
   );
   ...
@@ -237,4 +253,4 @@ end;
 
 If the assertion throws an error, this may lead to a message like »Parameter 'P_PARAM' is supposed to be in the range of [10,20,30] but was 45.«
 
-
+Be creative when thinking about these methods. In a project it turned out to be very convenient to wrap these assertion methods into a method that didn't throw an exception but rather catched any upcoming error and integrated into an APEX error stack. This way, it is very convenient to test a set of conditions and all conditions that fail add to the error stack.

@@ -1,0 +1,12 @@
+create table pit_message_severity(
+  pse_id number,
+  pse_name &ORA_NAME_TYPE.,
+  pse_display_name varchar2(50 char),
+  constraint pit_message_severity_pk primary key(pse_id)
+) organization index;
+
+comment on column pit_message_severity.pse_id is 'Technical Key';
+comment on column pit_message_severity.pse_name is 'Unique name for message severity';
+comment on column pit_message_severity.pse_name is 'Display name for message severity';
+
+comment on table pit_message_severity is 'Lookup-table for message severities.';
